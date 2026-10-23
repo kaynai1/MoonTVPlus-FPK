@@ -3,13 +3,41 @@
 COMPOSE_DIR="${TRIM_APPDEST}/docker"
 COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yaml"
 CONTAINER_NAME="moontvplus"
+IMAGE="ghcr.io/mtvpls/moontvplus:latest"
 IMAGE_TAR="${COMPOSE_DIR}/moontvplus-image.tar"
+IMAGE_MIRRORS="ghcr.nju.edu.cn ghcr.m.daocloud.io"
 
-load_embedded_image() {
+# 优先用内嵌镜像，其次按镜像源顺序拉取（国内镜像源在前，ghcr.io 兜底）
+ensure_image() {
     if [ -f "${IMAGE_TAR}" ]; then
         install_log "加载内嵌镜像 ${IMAGE_TAR}"
         docker load -i "${IMAGE_TAR}" 2>&1 | install_log
+        return 0
     fi
+    if [ "$1" != "force" ] && docker image inspect "${IMAGE}" >/dev/null 2>&1; then
+        install_log "镜像已存在，跳过拉取"
+        return 0
+    fi
+
+    for host in ${IMAGE_MIRRORS} ""; do
+        if [ -n "${host}" ]; then
+            ref="${host}/mtvpls/moontvplus:latest"
+        else
+            ref="${IMAGE}"
+        fi
+        install_log "拉取镜像 ${ref}"
+        if timeout 300 docker pull "${ref}" >> "${LOG_FILE}" 2>&1; then
+            if docker image inspect "${ref}" >/dev/null 2>&1; then
+                [ "${ref}" != "${IMAGE}" ] && docker tag "${ref}" "${IMAGE}"
+                install_log "镜像就绪 ${ref}"
+                return 0
+            fi
+        fi
+        install_log "镜像源 ${host:-ghcr.io} 不可用，尝试下一个"
+    done
+
+    install_log "所有镜像源均拉取失败"
+    return 1
 }
 
 compose_up() {
@@ -43,14 +71,14 @@ wait_running() {
 
 service_postinst() {
     mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/downloads"
-    load_embedded_image
+    ensure_image || error_exit "无法获取 MoonTVPlus 镜像，请检查网络后重试安装"
     compose_up
     wait_running
 }
 
 service_postupgrade() {
     mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/downloads"
-    load_embedded_image
+    ensure_image
     compose_up
     wait_running
 }

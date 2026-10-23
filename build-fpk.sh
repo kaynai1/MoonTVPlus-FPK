@@ -42,8 +42,6 @@ if [ "$VARIANT" = "offline" ]; then
         exit 1
     fi
     cp "$IMAGE_TAR" "$STAGE/app/docker/moontvplus-image.tar"
-    sed -i 's#ghcr.io/kaynai1/moontvplus-fpk:latest#ghcr.io/kaynai1/moontvplus-fpk:embedded#' \
-        "$STAGE/app/docker/docker-compose.yaml"
     sed -i 's#^    restart: unless-stopped#    restart: unless-stopped\n    pull_policy: never#' \
         "$STAGE/app/docker/docker-compose.yaml"
 fi

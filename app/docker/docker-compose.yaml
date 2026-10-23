@@ -1,12 +1,14 @@
 services:
   moontvplus:
-    image: ghcr.io/kaynai1/moontvplus-fpk:latest
+    image: ghcr.io/mtvpls/moontvplus:latest
     container_name: moontvplus
     restart: unless-stopped
+    command: ["node", "/app/activation/start-with-activation.js"]
     ports:
       - "${TRIM_SERVICE_PORT:-3000}:3000"
     volumes:
       - ${TRIM_PKGVAR:?TRIM_PKGVAR not set}/data:/app/.data
+      - ${TRIM_APPDEST}/docker/activation:/app/activation:ro
     environment:
       - NODE_ENV=production
       - HOSTNAME=0.0.0.0

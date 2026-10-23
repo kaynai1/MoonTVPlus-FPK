@@ -7,50 +7,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ghcr.io/kaynai1/moontvplus-fpk
+  IMAGE: ghcr.io/mtvpls/moontvplus
 
 jobs:
-  build-docker:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Prepare build context
-        run: |
-          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git /tmp/src
-          cp app/docker/Dockerfile /tmp/src/Dockerfile
-          cp app/docker/.dockerignore /tmp/src/.dockerignore
-          rm -rf /tmp/src/activation
-          cp -r app/docker/activation /tmp/src/activation
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: /tmp/src
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.ref_name }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   fpk-online:
-    needs: build-docker
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -73,7 +33,6 @@ jobs:
           fail_on_unmatched_files: true
 
   fpk-offline:
-    needs: build-docker
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -85,21 +44,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull and retag image
+      - name: Pull official image
         run: |
           docker pull ${{ env.IMAGE }}:latest
-          docker tag ${{ env.IMAGE }}:latest ${{ env.IMAGE }}:embedded
+          docker image inspect ${{ env.IMAGE }}:latest --format '{{.Size}} bytes'
 
       - name: Export image
         run: |
-          docker save ${{ env.IMAGE }}:embedded -o moontvplus-image.tar
+          docker save ${{ env.IMAGE }}:latest -o moontvplus-image.tar
           ls -lh moontvplus-image.tar
 
       - name: Build offline FPK
@@ -130,8 +82,8 @@ jobs:
 
             | 文件 | 大小 | 适用场景 |
             | --- | --- | --- |
-            | `moontvplus_*_online.fpk` | 约 200 KB | **推荐**。安装时从 GHCR 拉取镜像，需要 NAS 能联网 |
-            | `moontvplus_*_offline.fpk` | 约 1.4 GB | 镜像已内嵌，安装过程完全离线，适合无法访问 GHCR 的环境 |
+            | `moontvplus_*_online.fpk` | 约 200 KB（另需拉取 307 MB 镜像） | **推荐**。安装时从 GHCR 拉取官方镜像，会自动尝试国内镜像源 |
+            | `moontvplus_*_offline.fpk` | 约 300 MB | 镜像已内嵌，安装过程完全离线 |
 
             ## 安装步骤
 
@@ -144,6 +96,8 @@ jobs:
 
             ## 说明
 
+            - 使用官方镜像 `ghcr.io/mtvpls/moontvplus:latest`，激活层通过挂载方式叠加，不修改上游镜像
+            - 在线版拉取失败时依次尝试 `ghcr.nju.edu.cn`、`ghcr.m.daocloud.io`，最后回退 `ghcr.io`
             - 一个激活码只能绑定一台设备；换设备请在管理后台解绑
             - 激活码管理后台：https://9ay.kdns.fr
             - 升级/卸载不会删除数据（`data` 目录保留在应用数据目录中）

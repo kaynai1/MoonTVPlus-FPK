@@ -1,5 +1,5 @@
 appname         = moontvplus
-version         = 1.0.0
+version         = 1.2.0
 display_name    = MoonTVPlus
 platform        = x86
 maintainer      = MoonTVPlus
@@ -13,4 +13,4 @@ checkport       = false
 desc            = 影视、音乐、漫画聚合平台。支持多源搜索播放、离线下载、多端同步与激活码授权。
 source          = thirdparty
 checksum        = 00000000000000000000000000000000
-fpk_version     = 1.0.0
+fpk_version     = 1.2.0

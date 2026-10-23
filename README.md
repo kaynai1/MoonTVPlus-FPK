@@ -8,8 +8,11 @@
 
 | 文件 | 说明 |
 | --- | --- |
-| `moontvplus_<版本>_online.fpk` | 在线版（约 200 KB），安装时从 GHCR 拉取镜像 |
-| `moontvplus_<版本>_offline.fpk` | 离线版（数百 MB），镜像已内嵌，安装过程不联网 |
+| `moontvplus_<版本>_online.fpk` | 在线版（约 200 KB），安装时拉取官方镜像 `ghcr.io/mtvpls/moontvplus`（307 MB） |
+| `moontvplus_<版本>_offline.fpk` | 离线版（约 300 MB），镜像已内嵌，安装过程不联网 |
+
+镜像不自己构建：直接用官方的 `ghcr.io/mtvpls/moontvplus:latest`，激活层以只读挂载方式叠加，上游镜像完全不动。
+拉取顺序为 `ghcr.nju.edu.cn` → `ghcr.m.daocloud.io` → `ghcr.io`，前两个是国内镜像源。
 
 ## 安装
 
@@ -43,7 +46,7 @@ cmd/                  生命周期脚本
   installer           入口脚本共用的初始化
   service-setup       安装/升级/卸载/改配置时的 docker compose 操作
   main                start/stop/status
-app/docker/           Dockerfile、docker-compose.yaml、激活层
+app/docker/           docker-compose.yaml、激活层（镜像用官方的）
 build-fpk.sh          本地构建 FPK（不依赖 fnpack）
 ```
 
@@ -59,17 +62,15 @@ FPK 本质是 gzip tar：根目录放 `manifest` 等文件，`app.tgz`（内含 
 离线版镜像准备：
 
 ```bash
-docker pull ghcr.io/kaynai1/moontvplus-fpk:latest
-docker tag ghcr.io/kaynai1/moontvplus-fpk:latest ghcr.io/kaynai1/moontvplus-fpk:embedded
-docker save ghcr.io/kaynai1/moontvplus-fpk:embedded -o moontvplus-image.tar
+docker pull ghcr.io/mtvpls/moontvplus:latest
+docker save ghcr.io/mtvpls/moontvplus:latest -o moontvplus-image.tar
 ```
 
 ## 发布
 
 推送 `v*` 标签即可触发 `.github/workflows/docker-build.yml`：
 
-1. 构建并推送镜像到 `ghcr.io/kaynai1/moontvplus-fpk`
-2. 构建在线版 / 离线版 FPK
-3. 上传到对应的 GitHub Release
+1. 构建在线版 / 离线版 FPK（离线版会先导出官方镜像）
+2. 上传到对应的 GitHub Release
 
-镜像构建时把 MoonTVPlus 源码克隆到临时目录，再叠加本仓库的 `Dockerfile` 与 `activation/`，不改动上游任何代码。
+激活层通过 `/app/activation` 只读挂载进官方镜像，并用 `command` 覆盖启动命令，上游镜像与代码均不改动。
