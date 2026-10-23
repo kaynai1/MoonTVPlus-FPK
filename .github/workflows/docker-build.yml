@@ -47,9 +47,9 @@ jobs:
       - name: Clone MoonTVPlus source
         run: |
           cd app/docker
-          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git src
-          cp -r src/* .
-          rm -rf src
+          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git /tmp/moontv-src
+          cp -r /tmp/moontv-src/. .
+          rm -rf /tmp/moontv-src
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -127,9 +127,9 @@ jobs:
       - name: Clone MoonTVPlus source
         run: |
           cd moontvplus-fpk-embedded/app/docker
-          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git src
-          cp -r src/* .
-          rm -rf src
+          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git /tmp/moontv-src
+          cp -r /tmp/moontv-src/. .
+          rm -rf /tmp/moontv-src
 
       - name: Build Docker Image
         run: |
