@@ -1,11 +1,9 @@
-name: Build and Push Docker Image
+name: Build and Release FPK
 
 on:
   push:
     branches: [ main, master ]
     tags: [ 'v*' ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 env:
@@ -13,7 +11,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  build-docker:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,24 +34,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Clone MoonTVPlus source
         run: |
-          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git ./app/docker/moontvplus-src
-          cp -r ./app/docker/moontvplus-src/* ./app/docker/
-          rm -rf ./app/docker/moontvplus-src
+          cd app/docker
+          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git src
+          cp -r src/* .
+          rm -rf src
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -66,8 +62,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  build-fpk:
-    needs: build-and-push
+  build-fpk-online:
+    needs: build-docker
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
 
@@ -77,19 +73,98 @@ jobs:
 
       - name: Download fnpack
         run: |
-          wget https://github.com/ckcoding/fnpack/releases/latest/download/fnpack-linux-amd64 -O fnpack
+          wget https://github.com/nicknisi/fnpack/releases/download/v1.2.3/fnpack-1.2.3-linux-amd64.tar.gz
+          tar -xzf fnpack-1.2.3-linux-amd64.tar.gz
           chmod +x fnpack
           sudo mv fnpack /usr/local/bin/
 
-      - name: Build FPK package
+      - name: Build Online FPK
         run: |
           cd moontvplus-fpk-ghcr
           fnpack build
+          ls -lh *.fpk
 
-      - name: Upload FPK to Release
+      - name: Upload Online FPK to Release
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: moontvplus-fpk-ghcr/moontvplus.fpk
+          name: "MoonTVPlus v${{ github.ref_name }}"
+          body: |
+            ## MoonTVPlus FPK 包
+
+            ### 在线版（推荐）
+            - 文件小（< 10MB）
+            - 安装时从 GitHub 拉取镜像
+            - 适合网络良好的环境
+
+            ### 安装步骤
+            1. 下载 moontvplus.fpk
+            2. 打开 fnOS 应用中心
+            3. 点击「手动安装」
+            4. 上传 FPK 文件
+            5. 访问 http://你的IP:3000 完成配置
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-fpk-offline:
+    needs: build-docker
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download fnpack
+        run: |
+          wget https://github.com/nicknisi/fnpack/releases/download/v1.2.3/fnpack-1.2.3-linux-amd64.tar.gz
+          tar -xzf fnpack-1.2.3-linux-amd64.tar.gz
+          chmod +x fnpack
+          sudo mv fnpack /usr/local/bin/
+
+      - name: Clone MoonTVPlus source
+        run: |
+          cd moontvplus-fpk-embedded/app/docker
+          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git src
+          cp -r src/* .
+          rm -rf src
+
+      - name: Build Docker Image
+        run: |
+          cd moontvplus-fpk-embedded/app/docker
+          docker build -t moontvplus-fpk:offline .
+
+      - name: Export Docker Image
+        run: |
+          cd moontvplus-fpk-embedded/app/docker
+          docker save moontvplus-fpk:offline -o ../moontvplus-image.tar
+          ls -lh ../moontvplus-image.tar
+
+      - name: Build Offline FPK
+        run: |
+          cd moontvplus-fpk-embedded
+          cp app/docker/moontvplus-image.tar ./moontvplus-image.tar
+          fnpack build
+          ls -lh *.fpk
+
+      - name: Upload Offline FPK to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: moontvplus-fpk-embedded/moontvplus.fpk
+          name: "MoonTVPlus v${{ github.ref_name }}"
+          body: |
+            ## MoonTVPlus FPK 包
+
+            ### 离线版
+            - 文件大（约 800MB）
+            - 镜像已内嵌，无需网络
+            - 适合离线环境或网络受限
+
+            ### 安装步骤
+            1. 下载 moontvplus.fpk
+            2. 打开 fnOS 应用中心
+            3. 点击「手动安装」
+            4. 上传 FPK 文件
+            5. 访问 http://你的IP:3000 完成配置
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
