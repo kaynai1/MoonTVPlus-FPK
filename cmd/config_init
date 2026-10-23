@@ -1,0 +1,3 @@
+#!/bin/bash
+# Called before user configures the application
+exit 0

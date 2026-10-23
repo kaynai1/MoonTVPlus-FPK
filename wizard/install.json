@@ -1,0 +1,21 @@
+{
+  "steps": [
+    {
+      "title": "欢迎使用 MoonTVPlus",
+      "description": "MoonTVPlus 是一个功能强大的影视聚合平台，支持电影、电视剧、动漫、音乐、漫画等多种媒体内容。",
+      "type": "info"
+    },
+    {
+      "title": "端口配置",
+      "description": "请选择应用使用的端口号",
+      "type": "port",
+      "default": 3000,
+      "variable": "PORT"
+    },
+    {
+      "title": "激活说明",
+      "description": "安装完成后，首次访问应用需要输入激活码。请联系管理员获取激活码，或访问管理后台：https://9ay.kdns.fr",
+      "type": "info"
+    }
+  ]
+}

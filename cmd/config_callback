@@ -1,0 +1,8 @@
+#!/bin/bash
+# Called after user configures the application
+
+# Restart the service to apply new configuration
+/var/apps/moontvplus/cmd/main stop
+/var/apps/moontvplus/cmd/main start
+
+exit 0

@@ -1,0 +1,27 @@
+#!/bin/bash
+
+COMPOSE_FILE="/var/apps/moontvplus/app/docker/docker-compose.yaml"
+
+case "$1" in
+  start)
+    cd /var/apps/moontvplus/app/docker
+    docker compose -f "$COMPOSE_FILE" up -d
+    exit 0
+    ;;
+  stop)
+    cd /var/apps/moontvplus/app/docker
+    docker compose -f "$COMPOSE_FILE" down
+    exit 0
+    ;;
+  status)
+    cd /var/apps/moontvplus/app/docker
+    if docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
+      exit 0
+    else
+      exit 3
+    fi
+    ;;
+  *)
+    exit 0
+    ;;
+esac

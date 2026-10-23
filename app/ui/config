@@ -1,0 +1,6 @@
+{
+  "title": "MoonTVPlus",
+  "icon": "/webapi/entry.cgi?api=SYNO.Core.Desktop&method=geticon&appname=moontvplus",
+  "port": 3000,
+  "url_root": ""
+}

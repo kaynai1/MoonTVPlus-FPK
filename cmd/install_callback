@@ -1,0 +1,11 @@
+#!/bin/bash
+# Called after user installs the application
+
+# Create data directories
+mkdir -p /var/apps/moontvplus/shares/moontvplus/data
+mkdir -p /var/apps/moontvplus/shares/moontvplus/activation
+
+# Set permissions
+chown -R docker-moontvplus:docker-moontvplus /var/apps/moontvplus/shares
+
+exit 0

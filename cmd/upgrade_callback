@@ -1,0 +1,3 @@
+#!/bin/bash
+# Called after user upgrades the application
+exit 0

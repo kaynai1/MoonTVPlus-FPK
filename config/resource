@@ -1,0 +1,18 @@
+{
+  "docker-project": "/var/apps/moontvplus",
+  "shares": [
+    {
+      "name": "moontvplus-data",
+      "path": "/var/apps/moontvplus/shares/moontvplus/data",
+      "container-paths": [
+        {
+          "container-name": "moontvplus",
+          "path": "/app/.data"
+        }
+      ],
+      "permission": {
+        "docker-moontvplus": "read-write"
+      }
+    }
+  ]
+}

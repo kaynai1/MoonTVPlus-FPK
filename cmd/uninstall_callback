@@ -1,0 +1,8 @@
+#!/bin/bash
+# Called after user uninstalls the application
+
+# Clean up data (optional - uncomment to remove data on uninstall)
+# rm -rf /var/apps/moontvplus/shares/moontvplus/data
+# rm -rf /var/apps/moontvplus/shares/moontvplus/activation
+
+exit 0
