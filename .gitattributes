@@ -1,0 +1,6 @@
+* text=auto eol=lf
+
+*.png binary
+*.fpk binary
+*.tgz binary
+*.tar binary
