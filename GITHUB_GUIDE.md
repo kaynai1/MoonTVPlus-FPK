@@ -24,7 +24,7 @@ git push -u origin main
 
 # 如果提示认证，使用你的 GitHub Token:
 # 用户名：kaynai1
-# 密码：[REMOVED]
+# 密码：[你的 GitHub Token]
 ```
 
 ### 方法二：使用 GitHub Desktop
@@ -56,7 +56,7 @@ git push -u origin main
 
 ```bash
 # 使用 GitHub Token 登录
-echo [REMOVED] | docker login ghcr.io -u kaynai1 --password-stdin
+echo [你的 GitHub Token] | docker login ghcr.io -u kaynai1 --password-stdin
 ```
 
 ### 构建并推送镜像
@@ -127,7 +127,7 @@ cd E:/qcode/moontvplus-fpk-ghcr
 git push -u origin main
 
 # 2. 登录 GHCR
-echo [REMOVED] | docker login ghcr.io -u kaynai1 --password-stdin
+echo [你的 GitHub Token] | docker login ghcr.io -u kaynai1 --password-stdin
 
 # 3. 推送 Docker 镜像
 ./push-to-ghcr.sh
@@ -142,7 +142,7 @@ git push origin v1.0.0
 
 ##  安全提示
 
-**重要**: 你的 GitHub Token (`[REMOVED]`) 具有仓库访问权限。
+**重要**: 你的 GitHub Token (`[你的 GitHub Token]`) 具有仓库访问权限。
 
 建议：
 1. ✅ 不要将 Token 提交到代码仓库
