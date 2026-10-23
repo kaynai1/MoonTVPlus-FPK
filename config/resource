@@ -1,18 +1,25 @@
 {
-  "docker-project": "/var/apps/moontvplus",
-  "shares": [
-    {
-      "name": "moontvplus-data",
-      "path": "/var/apps/moontvplus/shares/moontvplus/data",
-      "container-paths": [
-        {
-          "container-name": "moontvplus",
-          "path": "/app/.data"
-        }
-      ],
-      "permission": {
-        "docker-moontvplus": "read-write"
-      }
+    "port-config": {
+        "protocol-file": "MoonTVPlus.sc"
+    },
+    "data-share": {
+        "shares": [
+            {
+                "name": "MoonTVPlus",
+                "permission": {
+                    "rw": [
+                        "moontvplus"
+                    ]
+                }
+            }
+        ]
+    },
+    "docker-project": {
+        "projects": [
+            {
+                "name": "moontvplus",
+                "path": "docker"
+            }
+        ]
     }
-  ]
 }

@@ -1,7 +1,7 @@
 {
-  "defaults": {
-    "run-as": "package"
-  },
-  "username": "docker-moontvplus",
-  "groupname": "docker-moontvplus"
+    "defaults": {
+        "run-as": "package"
+    },
+    "username": "moontvplus",
+    "groupname": "moontvplus"
 }

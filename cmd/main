@@ -1,27 +1,27 @@
 #!/bin/bash
 
-COMPOSE_FILE="/var/apps/moontvplus/app/docker/docker-compose.yaml"
+COMPOSE_DIR="${TRIM_APPDEST}/docker"
+CONTAINER_NAME="moontvplus"
 
-case "$1" in
-  start)
-    cd /var/apps/moontvplus/app/docker
-    docker compose -f "$COMPOSE_FILE" up -d
-    exit 0
-    ;;
-  stop)
-    cd /var/apps/moontvplus/app/docker
-    docker compose -f "$COMPOSE_FILE" down
-    exit 0
-    ;;
-  status)
-    cd /var/apps/moontvplus/app/docker
-    if docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
-      exit 0
-    else
-      exit 3
+is_running() {
+    [ "$(docker inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = "true" ]
+}
+
+case $1 in
+start)
+    if ! docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1 && [ -n "${TRIM_PKGVAR:-}" ]; then
+        cd "${COMPOSE_DIR}" && docker compose -f docker-compose.yaml up -d
     fi
-    ;;
-  *)
     exit 0
+    ;;
+stop)
+    docker stop "${CONTAINER_NAME}" >/dev/null 2>&1
+    exit 0
+    ;;
+status)
+    if is_running; then exit 0; else exit 3; fi
+    ;;
+*)
+    exit 1
     ;;
 esac

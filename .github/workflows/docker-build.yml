@@ -1,14 +1,13 @@
-name: Build and Release FPK
+name: Build FPK Release
 
 on:
   push:
-    branches: [ main, master ]
     tags: [ 'v*' ]
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE: ghcr.io/kaynai1/moontvplus-fpk
 
 jobs:
   build-docker:
@@ -18,155 +17,129 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Clone MoonTVPlus source
+      - name: Prepare build context
         run: |
-          cd app/docker
-          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git /tmp/moontv-src
-          cp -r /tmp/moontv-src/. .
-          rm -rf /tmp/moontv-src
+          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git /tmp/src
+          cp app/docker/Dockerfile /tmp/src/Dockerfile
+          cp app/docker/.dockerignore /tmp/src/.dockerignore
+          rm -rf /tmp/src/activation
+          cp -r app/docker/activation /tmp/src/activation
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+      - name: Build and push image
+        uses: docker/build-push-action@v6
         with:
-          context: ./app/docker
+          context: /tmp/src
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  build-fpk-online:
+  fpk-online:
     needs: build-docker
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download fnpack
+      - name: Build online FPK
         run: |
-          wget https://developer.fnnas.com/downloads/fnpack-1.2.3-linux-amd64.tar.gz
-          tar -xzf fnpack-1.2.3-linux-amd64.tar.gz
-          chmod +x fnpack
-          sudo mv fnpack /usr/local/bin/
-          fnpack --version
+          bash build-fpk.sh online
+          ls -lh dist
 
-      - name: Build Online FPK
-        run: |
-          cd moontvplus-fpk-ghcr
-          fnpack build
-          ls -lh *.fpk
-
-      - name: Upload Online FPK to Release
-        uses: softprops/action-gh-release@v1
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
         with:
-          files: moontvplus-fpk-ghcr/moontvplus.fpk
-          name: "MoonTVPlus v${{ github.ref_name }}"
-          body: |
-            ## MoonTVPlus FPK 包
+          files: dist/moontvplus_*_online.fpk
+          fail_on_unmatched_files: true
 
-            ### 在线版（推荐）
-            - 文件小（< 10MB）
-            - 安装时从 GitHub 拉取镜像
-            - 适合网络良好的环境
-
-            ### 安装步骤
-            1. 下载 moontvplus.fpk
-            2. 打开 fnOS 应用中心
-            3. 点击「手动安装」
-            4. 上传 FPK 文件
-            5. 访问 http://你的IP:3000 完成配置
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-fpk-offline:
+  fpk-offline:
     needs: build-docker
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+      packages: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download fnpack
-        run: |
-          wget https://developer.fnnas.com/downloads/fnpack-1.2.3-linux-amd64.tar.gz
-          tar -xzf fnpack-1.2.3-linux-amd64.tar.gz
-          chmod +x fnpack
-          sudo mv fnpack /usr/local/bin/
-          fnpack --version
-
-      - name: Clone MoonTVPlus source
-        run: |
-          cd moontvplus-fpk-embedded/app/docker
-          git clone --depth 1 https://github.com/mtvpls/MoonTVPlus.git /tmp/moontv-src
-          cp -r /tmp/moontv-src/. .
-          rm -rf /tmp/moontv-src
-
-      - name: Build Docker Image
-        run: |
-          cd moontvplus-fpk-embedded/app/docker
-          docker build -t moontvplus-fpk:offline .
-
-      - name: Export Docker Image
-        run: |
-          cd moontvplus-fpk-embedded/app/docker
-          docker save moontvplus-fpk:offline -o ../moontvplus-image.tar
-          ls -lh ../moontvplus-image.tar
-
-      - name: Build Offline FPK
-        run: |
-          cd moontvplus-fpk-embedded
-          cp app/docker/moontvplus-image.tar ./moontvplus-image.tar
-          fnpack build
-          ls -lh *.fpk
-
-      - name: Upload Offline FPK to Release
-        uses: softprops/action-gh-release@v1
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          files: moontvplus-fpk-embedded/moontvplus.fpk
-          name: "MoonTVPlus v${{ github.ref_name }}"
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and retag image
+        run: |
+          docker pull ${{ env.IMAGE }}:latest
+          docker tag ${{ env.IMAGE }}:latest ${{ env.IMAGE }}:embedded
+
+      - name: Export image
+        run: |
+          docker save ${{ env.IMAGE }}:embedded -o moontvplus-image.tar
+          ls -lh moontvplus-image.tar
+
+      - name: Build offline FPK
+        run: |
+          bash build-fpk.sh offline
+          ls -lh dist
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/moontvplus_*_offline.fpk
+          fail_on_unmatched_files: true
+
+  release-notes:
+    needs: [ fpk-online, fpk-offline ]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Write release notes
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MoonTVPlus FPK ${{ github.ref_name }}
           body: |
-            ## MoonTVPlus FPK 包
+            ## 下载哪个？
 
-            ### 离线版
-            - 文件大（约 800MB）
-            - 镜像已内嵌，无需网络
-            - 适合离线环境或网络受限
+            | 文件 | 大小 | 适用场景 |
+            | --- | --- | --- |
+            | `moontvplus_*_online.fpk` | 约 200 KB | **推荐**。安装时从 GHCR 拉取镜像，需要 NAS 能联网 |
+            | `moontvplus_*_offline.fpk` | 约 500 MB+ | 镜像已内嵌，安装过程完全离线，适合无法访问 GHCR 的环境 |
 
-            ### 安装步骤
-            1. 下载 moontvplus.fpk
-            2. 打开 fnOS 应用中心
-            3. 点击「手动安装」
-            4. 上传 FPK 文件
-            5. 访问 http://你的IP:3000 完成配置
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            ## 安装步骤
+
+            1. 在飞牛 OS 中打开「应用中心 → 手动安装」，选择下载的 `.fpk` 文件
+            2. 安装向导中填写访问端口（默认 3000）
+            3. 安装完成后打开应用，首次访问会进入初始化页面：
+               - 设置管理员用户名与密码（即 MoonTVPlus 站长账号）
+               - 输入激活码 `MTV-XXXX-XXXX-XXXX`
+            4. 初始化完成约 10 秒后应用自动就绪
+
+            ## 说明
+
+            - 一个激活码只能绑定一台设备；换设备请在管理后台解绑
+            - 激活码管理后台：https://9ay.kdns.fr
+            - 升级/卸载不会删除数据（`data` 目录保留在应用数据目录中）

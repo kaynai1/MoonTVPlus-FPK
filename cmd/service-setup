@@ -1,0 +1,65 @@
+#!/bin/bash
+
+COMPOSE_DIR="${TRIM_APPDEST}/docker"
+COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yaml"
+CONTAINER_NAME="moontvplus"
+IMAGE_TAR="${COMPOSE_DIR}/moontvplus-image.tar"
+
+load_embedded_image() {
+    if [ -f "${IMAGE_TAR}" ]; then
+        install_log "加载内嵌镜像 ${IMAGE_TAR}"
+        docker load -i "${IMAGE_TAR}" 2>&1 | install_log
+    fi
+}
+
+compose_up() {
+    local port="${wizard_port:-${TRIM_SERVICE_PORT:-3000}}"
+    cd "${COMPOSE_DIR}" || error_exit "找不到应用目录 ${COMPOSE_DIR}"
+    install_log "启动容器，端口 ${port}"
+    TRIM_SERVICE_PORT="${port}" docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans 2>&1 | install_log
+}
+
+compose_down() {
+    if [ -f "${COMPOSE_FILE}" ]; then
+        cd "${COMPOSE_DIR}" || return 0
+        docker compose -f "${COMPOSE_FILE}" down --remove-orphans 2>&1 | install_log
+    fi
+}
+
+wait_running() {
+    local i=0
+    while [ "${i}" -lt 60 ]; do
+        if [ "$(docker inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = "true" ]; then
+            install_log "容器 ${CONTAINER_NAME} 已运行"
+            return 0
+        fi
+        i=$((i + 1))
+        sleep 2
+    done
+    install_log "容器启动超时，输出最近日志："
+    docker logs --tail 60 "${CONTAINER_NAME}" 2>&1 | install_log
+    return 1
+}
+
+service_postinst() {
+    mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/downloads"
+    load_embedded_image
+    compose_up
+    wait_running
+}
+
+service_postupgrade() {
+    mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/downloads"
+    load_embedded_image
+    compose_up
+    wait_running
+}
+
+service_preuninst() {
+    compose_down
+}
+
+service_postconfig() {
+    compose_up
+    wait_running
+}

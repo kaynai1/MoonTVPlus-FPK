@@ -1,0 +1,15 @@
+{
+    ".url": {
+        "moontvplus.Application":
+        {
+            "title": "MoonTVPlus",
+            "desc": "MoonTVPlus 影视聚合",
+            "icon": "images/{0}.png",
+            "type": "url",
+            "port": "3000",
+            "protocol": "http",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}

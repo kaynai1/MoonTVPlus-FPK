@@ -1,421 +1,302 @@
 /**
- * MoonTVPlus Activation Layer - Startup Script
- * This script replaces the original start.js and adds activation code verification.
+ * MoonTVPlus 激活层
+ * 未完成配置/激活时只启动一个轻量 HTTP 服务，完成后才拉起 MoonTVPlus 本体。
  */
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const os = require('os');
+const crypto = require('crypto');
 
-const CONFIG_FILE = path.join(__dirname, 'config.json');
-const ACTIVATION_FILE = path.join(__dirname, 'activation.json');
-const ACTIVATION_PAGE = path.join(__dirname, 'activation-page.html');
+const DATA_DIR = process.env.DATA_DIR || '/app/.data';
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const ACTIVATION_FILE = path.join(DATA_DIR, 'activation.json');
+const DEVICE_FILE = path.join(DATA_DIR, 'device.json');
 const INSTALL_WIZARD = path.join(__dirname, 'install-wizard.html');
+const ACTIVATION_PAGE = path.join(__dirname, 'activation-page.html');
 const MOONTV_START = path.join(__dirname, '..', 'start.js');
 
-// Activation API endpoint
 const ACTIVATION_API_URL = process.env.ACTIVATION_API_URL || 'https://9ay.kdns.fr';
+const APP_PORT = Number(process.env.PORT) || 3000;
+const EXTERNAL_PORT = Number(process.env.APP_PORT) || APP_PORT;
 
-/**
- * Load configuration
- */
-function loadConfig() {
+function readJson(file) {
   try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-    }
-  } catch (err) {
-    console.error('[Config] Error reading config file:', err.message);
-  }
-  return null;
-}
-
-/**
- * Save configuration
- */
-function saveConfig(config) {
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
-  console.log('[Config] Configuration saved successfully');
-}
-
-/**
- * Check if the app is activated
- */
-function checkActivation() {
-  try {
-    if (fs.existsSync(ACTIVATION_FILE)) {
-      const data = JSON.parse(fs.readFileSync(ACTIVATION_FILE, 'utf8'));
-      if (data.activated && data.code && data.activatedAt) {
-        console.log('[Activation] App is activated with code:', data.code);
-        console.log('[Activation] Activated at:', data.activatedAt);
-        console.log('[Activation] Device ID:', data.deviceId || 'N/A');
-        return data;
-      }
-    }
-  } catch (err) {
-    console.error('[Activation] Error reading activation file:', err.message);
-  }
-  return null;
-}
-
-/**
- * Save activation data
- */
-function saveActivation(data) {
-  fs.writeFileSync(ACTIVATION_FILE, JSON.stringify(data, null, 2), 'utf8');
-  console.log('[Activation] Activation saved successfully');
-}
-
-/**
- * Generate a device ID
- */
-function getDeviceId() {
-  try {
-    const os = require('os');
-    const hostname = os.hostname();
-    const platform = os.platform();
-    return `fnos-${hostname}-${platform}`;
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
-    return `fnos-${Date.now()}`;
+    return null;
   }
 }
 
-/**
- * Verify activation code with the admin API
- */
-async function verifyActivationCode(code) {
-  const deviceId = getDeviceId();
+function writeJson(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+}
+
+function loadConfig() {
+  return readJson(CONFIG_FILE);
+}
+
+function loadActivation() {
+  const data = readJson(ACTIVATION_FILE);
+  if (data && data.activated && data.code && data.deviceId) return data;
+  return null;
+}
+
+function getDeviceId() {
+  const saved = readJson(DEVICE_FILE);
+  if (saved && saved.id) return saved.id;
+
+  const id = 'fnos-' + crypto.randomBytes(8).toString('hex');
+  writeJson(DEVICE_FILE, { id, createdAt: new Date().toISOString() });
+  return id;
+}
+
+async function postJson(pathname, payload) {
+  const res = await fetch(`${ACTIVATION_API_URL}${pathname}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(12000),
+  });
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    data = { ok: false, message: `激活服务器返回异常（HTTP ${res.status}）` };
+  }
+  return data || { ok: false };
+}
+
+async function activateCode(code) {
+  const device = getDeviceId();
+  const deviceName = process.env.APP_DEVICE_NAME || os.hostname();
 
   try {
-    const response = await fetch(`${ACTIVATION_API_URL}/api/admin/lookup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        code: code.trim(),
-        deviceId: deviceId,
-      }),
+    const data = await postJson('/api/activate', {
+      code: code.trim().toUpperCase(),
+      device,
+      deviceName,
     });
 
-    if (!response.ok) {
-      return { success: false, message: 'API request failed' };
+    if (data.ok) {
+      return { success: true, code: data.code || code.trim().toUpperCase(), token: data.token || '' };
     }
 
-    const data = await response.json();
-
-    if (data.success && data.code) {
-      if (data.code.status === 'unused' || data.code.deviceId === deviceId) {
-        return {
-          success: true,
-          code: data.code.code,
-          message: 'Activation successful',
-        };
-      } else if (data.code.status === 'bound') {
-        return {
-          success: false,
-          message: 'This activation code is already bound to another device',
-        };
-      } else if (data.code.status === 'revoked') {
-        return {
-          success: false,
-          message: 'This activation code has been revoked',
-        };
-      } else {
-        return {
-          success: false,
-          message: 'Invalid activation code',
-        };
-      }
-    } else {
-      return {
-        success: false,
-        message: data.message || 'Invalid activation code',
-      };
+    if (data.error === 'already_bound') {
+      return { success: false, message: data.message || '该激活码已绑定其他设备' };
     }
+    return { success: false, message: data.message || '激活码无效，请检查后重试' };
   } catch (err) {
-    console.error('[Activation] Verification error:', err.message);
-    return {
-      success: false,
-      message: 'Failed to connect to activation server. Please check your network.',
-    };
+    console.error('[Activation] activate failed:', err.message);
+    return { success: false, message: '无法连接激活服务器，请检查网络后重试' };
   }
 }
 
-/**
- * Create HTTP server
- */
-function createServer() {
-  return http.createServer(async (req, res) => {
-    const url = new URL(req.url, `http://${req.headers.host}`);
+async function remoteCheck(activation) {
+  try {
+    const data = await postJson('/api/check', {
+      code: activation.code,
+      device: activation.deviceId,
+    });
+    if (typeof data.valid === 'boolean') {
+      return { reachable: true, valid: data.valid, message: data.message };
+    }
+    return { reachable: false, valid: true };
+  } catch (err) {
+    console.error('[Activation] check failed:', err.message);
+    return { reachable: false, valid: true };
+  }
+}
 
-    // Handle CORS
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+function heartbeat(activation) {
+  const beat = () =>
+    postJson('/api/verify', { code: activation.code, device: activation.deviceId }).catch(() => {});
+  beat();
+  setInterval(beat, 6 * 60 * 60 * 1000).unref();
+}
 
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      res.end();
+function readBody(req) {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 1e6) req.destroy();
+    });
+    req.on('end', () => resolve(body));
+  });
+}
+
+function sendJson(res, status, payload) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(payload));
+}
+
+function sendPage(res, file) {
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(fs.readFileSync(file, 'utf8'));
+}
+
+function restartSoon(reason) {
+  setTimeout(() => {
+    console.log(`[Gate] ${reason}，重启容器...`);
+    process.exit(0);
+  }, 1500);
+}
+
+function startGate() {
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+    if (req.method === 'GET' && ['/', '/install', '/activate'].includes(url.pathname)) {
+      sendPage(res, loadConfig() ? ACTIVATION_PAGE : INSTALL_WIZARD);
       return;
     }
 
-    // Serve installation wizard (first time)
-    const config = loadConfig();
-    if (!config && (url.pathname === '/' || url.pathname === '/install')) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      const html = fs.readFileSync(INSTALL_WIZARD, 'utf8');
-      res.end(html);
-      return;
-    }
-
-    // Serve activation page (if not activated)
-    const activation = checkActivation();
-    if (!activation && (url.pathname === '/' || url.pathname === '/activate')) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      const html = fs.readFileSync(ACTIVATION_PAGE, 'utf8');
-      res.end(html);
-      return;
-    }
-
-    // Handle installation config API
-    if (url.pathname === '/api/install/config' && req.method === 'POST') {
-      let body = '';
-      req.on('data', chunk => {
-        body += chunk.toString();
-      });
-
-      req.on('end', async () => {
-        try {
-          const configData = JSON.parse(body);
-
-          // Validate
-          if (!configData.port || configData.port < 1024 || configData.port > 65535) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: 'Invalid port number' }));
-            return;
-          }
-
-          if (!configData.username || !configData.password) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: 'Username and password are required' }));
-            return;
-          }
-
-          // Save configuration
-          const config = {
-            port: configData.port,
-            username: configData.username,
-            password: configData.password,
-            createdAt: new Date().toISOString(),
-          };
-
-          saveConfig(config);
-
-          // Handle activation code if provided
-          if (configData.activationCode) {
-            const result = await verifyActivationCode(configData.activationCode);
-
-            if (result.success) {
-              const activationData = {
-                activated: true,
-                code: result.code,
-                deviceId: getDeviceId(),
-                activatedAt: new Date().toISOString(),
-                apiUrl: ACTIVATION_API_URL,
-              };
-
-              saveActivation(activationData);
-              config.activated = true;
-              saveConfig(config);
-            }
-          }
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            message: 'Configuration saved successfully',
-          }));
-
-          // Restart the app after a short delay
-          setTimeout(() => {
-            console.log('[Config] Restarting application with new configuration...');
-            process.exit(0);
-          }, 2000);
-
-        } catch (err) {
-          console.error('[Config] API error:', err.message);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Internal server error' }));
-        }
-      });
-
-      return;
-    }
-
-    // Handle activation API
-    if (url.pathname === '/api/activate' && req.method === 'POST') {
-      let body = '';
-      req.on('data', chunk => {
-        body += chunk.toString();
-      });
-
-      req.on('end', async () => {
-        try {
-          const { code } = JSON.parse(body);
-
-          if (!code || typeof code !== 'string') {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: 'Please enter an activation code' }));
-            return;
-          }
-
-          console.log('[Activation] Verifying code:', code);
-
-          const result = await verifyActivationCode(code);
-
-          if (result.success) {
-            const activationData = {
-              activated: true,
-              code: result.code,
-              deviceId: getDeviceId(),
-              activatedAt: new Date().toISOString(),
-              apiUrl: ACTIVATION_API_URL,
-            };
-
-            saveActivation(activationData);
-
-            // Update config
-            const config = loadConfig() || {};
-            config.activated = true;
-            saveConfig(config);
-
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              success: true,
-              message: 'Activation successful! Restarting application...',
-            }));
-
-            setTimeout(() => {
-              console.log('[Activation] Restarting application...');
-              process.exit(0);
-            }, 2000);
-          } else {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: result.message }));
-          }
-        } catch (err) {
-          console.error('[Activation] API error:', err.message);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Internal server error' }));
-        }
-      });
-
-      return;
-    }
-
-    // Handle status check
-    if (url.pathname === '/api/status') {
+    if (req.method === 'GET' && url.pathname === '/api/status') {
       const config = loadConfig();
-      const activation = checkActivation();
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
+      const activation = loadActivation();
+      sendJson(res, 200, {
         configured: !!config,
         activated: !!activation,
-        port: config?.port || 3000,
+        port: EXTERNAL_PORT,
         code: activation?.code || null,
         activatedAt: activation?.activatedAt || null,
-      }));
+        deviceId: getDeviceId(),
+      });
       return;
     }
 
-    // 404 for other routes
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
+    if (req.method === 'POST' && url.pathname === '/api/install/config') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        sendJson(res, 400, { success: false, message: '请求格式错误' });
+        return;
+      }
+
+      const username = String(payload.username || '').trim();
+      const password = String(payload.password || '');
+      const code = String(payload.code || '').trim();
+
+      if (!username) return sendJson(res, 400, { success: false, message: '请输入管理员用户名' });
+      if (password.length < 6) return sendJson(res, 400, { success: false, message: '密码至少 6 位' });
+      if (!code) return sendJson(res, 400, { success: false, message: '请输入激活码' });
+
+      const result = await activateCode(code);
+      if (!result.success) return sendJson(res, 400, { success: false, message: result.message });
+
+      const deviceId = getDeviceId();
+      writeJson(CONFIG_FILE, {
+        username,
+        password,
+        createdAt: new Date().toISOString(),
+      });
+      writeJson(ACTIVATION_FILE, {
+        activated: true,
+        code: result.code,
+        token: result.token,
+        deviceId,
+        activatedAt: new Date().toISOString(),
+        apiUrl: ACTIVATION_API_URL,
+      });
+
+      console.log('[Gate] 配置完成，激活码:', result.code);
+      sendJson(res, 200, { success: true, message: '配置完成，正在启动应用...' });
+      restartSoon('初始化完成');
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/activate') {
+      let payload;
+      try {
+        payload = JSON.parse(await readBody(req));
+      } catch {
+        sendJson(res, 400, { success: false, message: '请求格式错误' });
+        return;
+      }
+
+      const code = String(payload.code || '').trim();
+      if (!code) return sendJson(res, 400, { success: false, message: '请输入激活码' });
+
+      const result = await activateCode(code);
+      if (!result.success) return sendJson(res, 400, { success: false, message: result.message });
+
+      writeJson(ACTIVATION_FILE, {
+        activated: true,
+        code: result.code,
+        token: result.token,
+        deviceId: getDeviceId(),
+        activatedAt: new Date().toISOString(),
+        apiUrl: ACTIVATION_API_URL,
+      });
+
+      console.log('[Gate] 激活成功:', result.code);
+      sendJson(res, 200, { success: true, message: '激活成功，正在启动应用...' });
+      restartSoon('激活成功');
+      return;
+    }
+
+    sendJson(res, 404, { ok: false, message: 'Not Found' });
   });
+
+  server.listen(APP_PORT, '0.0.0.0', () => {
+    console.log(`[Gate] 等待配置/激活，监听 0.0.0.0:${APP_PORT}（外部端口 ${EXTERNAL_PORT}）`);
+  });
+
+  const shutdown = () => server.close(() => process.exit(0));
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
-/**
- * Main startup logic
- */
+function startApp(config) {
+  process.env.USERNAME = config.username;
+  process.env.PASSWORD = config.password;
+  process.env.PORT = String(APP_PORT);
+
+  console.log('[App] 配置已就绪，管理员:', config.username);
+  console.log('[App] 启动 MoonTVPlus ...');
+  require(MOONTV_START);
+}
+
 async function main() {
-  console.log('===========================================');
-  console.log('  MoonTVPlus with Activation Layer');
-  console.log('===========================================');
-  console.log('');
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 
   const config = loadConfig();
-  const activation = checkActivation();
-
   if (!config) {
-    // First time - show installation wizard
-    console.log('[Config] First time setup. Starting installation wizard...');
-    console.log('');
-    startServer();
-  } else if (!activation) {
-    // Configured but not activated
-    console.log('[Activation] App is configured but not activated.');
-    console.log('[Activation] Starting activation server...');
-    console.log('');
-    startServer();
-  } else {
-    // Fully configured and activated
-    console.log('[Config] Configuration loaded:');
-    console.log('  Port:', config.port);
-    console.log('  Username:', config.username);
-    console.log('');
-    console.log('[Activation] App is activated. Starting MoonTVPlus...');
-    console.log('');
-
-    // Set environment variables from config
-    process.env.PORT = config.port;
-
-    // Start the original MoonTVPlus app
-    try {
-      require(MOONTV_START);
-    } catch (err) {
-      console.error('[Activation] Failed to start MoonTVPlus:', err.message);
-      console.log('[Activation] Starting activation server as fallback...');
-      startServer();
-    }
+    console.log('[Gate] 首次启动，等待安装配置');
+    startGate();
+    return;
   }
+
+  const activation = loadActivation();
+  if (!activation) {
+    console.log('[Gate] 尚未激活');
+    startGate();
+    return;
+  }
+
+  const check = await remoteCheck(activation);
+  if (check.reachable && !check.valid) {
+    console.log('[Gate] 授权已失效:', check.message || '未知原因');
+    fs.rmSync(ACTIVATION_FILE, { force: true });
+    startGate();
+    return;
+  }
+
+  if (!check.reachable) {
+    console.log('[Gate] 激活服务器暂不可达，按已激活继续离线运行');
+  } else {
+    console.log('[Gate] 授权校验通过:', activation.code);
+  }
+
+  heartbeat(activation);
+  startApp(config);
 }
 
-function startServer() {
-  const server = createServer();
-  const config = loadConfig();
-  const port = config?.port || process.env.PORT || 3000;
-
-  server.listen(port, '0.0.0.0', () => {
-    console.log(`[Server] Running on http://0.0.0.0:${port}`);
-
-    if (!config) {
-      console.log('[Server] Please complete the installation wizard');
-    } else if (!checkActivation()) {
-      console.log('[Server] Please activate the application');
-    }
-
-    console.log('');
-  });
-
-  // Handle graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('[Server] Shutting down...');
-    server.close();
-    process.exit(0);
-  });
-
-  process.on('SIGINT', () => {
-    console.log('[Server] Shutting down...');
-    server.close();
-    process.exit(0);
-  });
-}
-
-// Start the app
-main().catch(err => {
-  console.error('[Fatal error]:', err.message);
+main().catch((err) => {
+  console.error('[Fatal]', err);
   process.exit(1);
 });
