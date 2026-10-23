@@ -131,7 +131,7 @@ jobs:
             | 文件 | 大小 | 适用场景 |
             | --- | --- | --- |
             | `moontvplus_*_online.fpk` | 约 200 KB | **推荐**。安装时从 GHCR 拉取镜像，需要 NAS 能联网 |
-            | `moontvplus_*_offline.fpk` | 约 500 MB+ | 镜像已内嵌，安装过程完全离线，适合无法访问 GHCR 的环境 |
+            | `moontvplus_*_offline.fpk` | 约 1.4 GB | 镜像已内嵌，安装过程完全离线，适合无法访问 GHCR 的环境 |
 
             ## 安装步骤
 
