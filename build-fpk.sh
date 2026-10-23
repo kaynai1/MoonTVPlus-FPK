@@ -9,6 +9,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 VERSION="${VERSION:-$(awk -F'=' '/^version/{gsub(/ /,"",$2);print $2}' manifest)}"
+VERSION="${VERSION#v}"
 OUT_DIR="${OUT_DIR:-$ROOT/dist}"
 mkdir -p "$OUT_DIR"
 
