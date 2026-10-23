@@ -15,6 +15,9 @@ services:
       - PORT=3000
       - PUID=${MOUNT_UID:-1001}
       - PGID=${MOUNT_GID:-1001}
+      # 官方「SQLite 存储」模式：站长账号之外的全部数据落在 /app/.data/moontv.db
+      # 不设这一项会退化成 localstorage 单用户模式，管理后台整块消失
+      - NEXT_PUBLIC_STORAGE_TYPE=d1
       - SQLITE_DB_PATH=/app/.data/moontv.db
       - OFFLINE_DOWNLOAD_DIR=/app/.data/downloads
       - APP_PORT=${TRIM_SERVICE_PORT:-3000}
