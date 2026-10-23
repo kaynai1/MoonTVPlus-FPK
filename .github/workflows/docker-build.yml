@@ -98,6 +98,7 @@ jobs:
 
             - 使用官方镜像 `ghcr.io/mtvpls/moontvplus:latest`，激活层通过挂载方式叠加，不修改上游镜像
             - 存储走官方 SQLite 模式（`NEXT_PUBLIC_STORAGE_TYPE=d1`），播放记录/收藏/用户/站点配置都存在应用数据目录，功能与原版一致
+            - 安装/升级本包会强制拉取官方 `latest` 镜像；平时想跟上游更新，打开「应用中心 → MoonTVPlus → 设置」直接点保存即可，会重新拉取并重启容器
             - 在线版拉取失败时依次尝试 `ghcr.nju.edu.cn`、`ghcr.m.daocloud.io`，最后回退 `ghcr.io`
             - 一个激活码只能绑定一台设备；换设备请联系管理员解绑
             - 升级/卸载不会删除数据（`data` 目录保留在应用数据目录中）

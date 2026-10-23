@@ -8,7 +8,9 @@ IMAGE_TAR="${COMPOSE_DIR}/moontvplus-image.tar"
 IMAGE_MIRRORS="ghcr.nju.edu.cn ghcr.m.daocloud.io"
 
 # 优先用内嵌镜像，其次按镜像源顺序拉取（国内镜像源在前，ghcr.io 兜底）
+# force：官方 latest 每次发布都会变，安装/升级时都要刷新，不能因为本地有旧镜像就跳过
 ensure_image() {
+    local per_host_timeout="${2:-300}"
     if [ -f "${IMAGE_TAR}" ]; then
         install_log "加载内嵌镜像 ${IMAGE_TAR}"
         docker load -i "${IMAGE_TAR}" 2>&1 | install_log
@@ -26,7 +28,7 @@ ensure_image() {
             ref="${IMAGE}"
         fi
         install_log "拉取镜像 ${ref}"
-        if timeout 300 docker pull "${ref}" >> "${LOG_FILE}" 2>&1; then
+        if timeout "${per_host_timeout}" docker pull "${ref}" >> "${LOG_FILE}" 2>&1; then
             if docker image inspect "${ref}" >/dev/null 2>&1; then
                 [ "${ref}" != "${IMAGE}" ] && docker tag "${ref}" "${IMAGE}"
                 install_log "镜像就绪 ${ref}"
@@ -35,6 +37,11 @@ ensure_image() {
         fi
         install_log "镜像源 ${host:-ghcr.io} 不可用，尝试下一个"
     done
+
+    if docker image inspect "${IMAGE}" >/dev/null 2>&1; then
+        install_log "所有镜像源均拉取失败，沿用本地已有镜像"
+        return 0
+    fi
 
     install_log "所有镜像源均拉取失败"
     return 1
@@ -71,6 +78,7 @@ wait_running() {
     while [ "${i}" -lt 60 ]; do
         if [ "$(docker inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = "true" ]; then
             install_log "容器 ${CONTAINER_NAME} 已运行"
+            install_log "运行镜像：$(docker inspect -f '{{.Config.Image}} / 构建于 {{.Created}}' "${CONTAINER_NAME}" 2>/dev/null)"
             return 0
         fi
         i=$((i + 1))
@@ -83,14 +91,14 @@ wait_running() {
 
 service_postinst() {
     prepare_data_dirs
-    ensure_image || error_exit "无法获取 MoonTVPlus 镜像，请检查网络后重试安装"
+    ensure_image force || error_exit "无法获取 MoonTVPlus 镜像，请检查网络后重试安装"
     compose_up
     wait_running
 }
 
 service_postupgrade() {
     prepare_data_dirs
-    ensure_image
+    ensure_image force
     compose_up
     wait_running
 }
@@ -99,7 +107,10 @@ service_preuninst() {
     compose_down
 }
 
+# 在应用中心「设置」里点保存即可刷新到官方最新版：镜像没变时 docker pull 只校验 manifest，几秒返回
 service_postconfig() {
+    prepare_data_dirs
+    ensure_image force 60
     compose_up
     wait_running
 }
