@@ -73,10 +73,11 @@ jobs:
 
       - name: Download fnpack
         run: |
-          wget https://github.com/nicknisi/fnpack/releases/download/v1.2.3/fnpack-1.2.3-linux-amd64.tar.gz
+          wget https://developer.fnnas.com/downloads/fnpack-1.2.3-linux-amd64.tar.gz
           tar -xzf fnpack-1.2.3-linux-amd64.tar.gz
           chmod +x fnpack
           sudo mv fnpack /usr/local/bin/
+          fnpack --version
 
       - name: Build Online FPK
         run: |
@@ -117,10 +118,11 @@ jobs:
 
       - name: Download fnpack
         run: |
-          wget https://github.com/nicknisi/fnpack/releases/download/v1.2.3/fnpack-1.2.3-linux-amd64.tar.gz
+          wget https://developer.fnnas.com/downloads/fnpack-1.2.3-linux-amd64.tar.gz
           tar -xzf fnpack-1.2.3-linux-amd64.tar.gz
           chmod +x fnpack
           sudo mv fnpack /usr/local/bin/
+          fnpack --version
 
       - name: Clone MoonTVPlus source
         run: |
