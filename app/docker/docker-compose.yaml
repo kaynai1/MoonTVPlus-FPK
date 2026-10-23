@@ -3,7 +3,7 @@ version: "3.8"
 services:
   moontvplus:
     container_name: moontvplus
-    image: ghcr.io/mtvpls/moontvplus-fpk:latest
+    image: ghcr.io/kaynai1/moontvplus-fpk:latest
     restart: unless-stopped
     ports:
       - "${PORT:-3000}:3000"

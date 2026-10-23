@@ -5,7 +5,7 @@
 
 set -e
 
-GHCR_USERNAME="mtvpls"
+GHCR_USERNAME="kaynai1"
 IMAGE_NAME="moontvplus-fpk"
 GHCR_REGISTRY="ghcr.io"
 FULL_IMAGE_NAME="${GHCR_REGISTRY}/${GHCR_USERNAME}/${IMAGE_NAME}"

@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoonTVPlus - 安装配置</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      padding: 40px;
+      max-width: 560px;
+      width: 100%;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      color: #667eea;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .step-indicator {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 32px;
+    }
+
+    .step {
+      width: 32px;
+      height: 4px;
+      background: #e5e7eb;
+      border-radius: 2px;
+      transition: background 0.3s;
+    }
+
+    .step.active {
+      background: #667eea;
+    }
+
+    .step.completed {
+      background: #10b981;
+    }
+
+    .form-section {
+      margin-bottom: 24px;
+    }
+
+    .form-section h3 {
+      font-size: 16px;
+      color: #1f2937;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #f3f4f6;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #374151;
+      margin-bottom: 8px;
+    }
+
+    .form-group label .required {
+      color: #ef4444;
+      margin-left: 4px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .form-group input::placeholder {
+      color: #9ca3af;
+    }
+
+    .form-group .hint {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 6px;
+    }
+
+    .form-group .error {
+      font-size: 12px;
+      color: #ef4444;
+      margin-top: 6px;
+      display: none;
+    }
+
+    .form-group input.invalid {
+      border-color: #ef4444;
+    }
+
+    .form-group input.invalid + .error {
+      display: block;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 32px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: #f3f4f6;
+      color: #374151;
+    }
+
+    .btn-secondary:hover {
+      background: #e5e7eb;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .success-message {
+      background: #f0fdf4;
+      border: 1px solid #a7f3d0;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: none;
+    }
+
+    .success-message.show {
+      display: block;
+    }
+
+    .success-message h4 {
+      color: #065f46;
+      margin-bottom: 8px;
+    }
+
+    .success-message p {
+      color: #047857;
+      font-size: 14px;
+    }
+
+    .info-box {
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      padding: 12px 16px;
+      border-radius: 4px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: #1e40af;
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        padding: 24px;
+      }
+
+      .header h1 {
+        font-size: 24px;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🌙 MoonTVPlus</h1>
+      <p>安装配置向导</p>
+    </div>
+
+    <div class="step-indicator">
+      <div class="step active" id="step-1"></div>
+      <div class="step" id="step-2"></div>
+      <div class="step" id="step-3"></div>
+    </div>
+
+    <div class="info-box">
+      💡 提示：以下配置可以在安装后随时修改
+    </div>
+
+    <div class="success-message" id="success-message">
+      <h4>✅ 配置已保存</h4>
+      <p id="success-text">应用正在启动...</p>
+    </div>
+
+    <form id="config-form">
+      <!-- 步骤 1: 端口配置 -->
+      <div class="form-section" id="section-1">
+        <h3>📡 端口配置</h3>
+
+        <div class="form-group">
+          <label>
+            应用端口
+            <span class="required">*</span>
+          </label>
+          <input
+            type="number"
+            id="port"
+            value="3000"
+            min="1024"
+            max="65535"
+            placeholder="例如：3000"
+            required
+          >
+          <div class="hint">默认端口 3000，范围 1024-65535</div>
+          <div class="error">请输入有效的端口号（1024-65535）</div>
+        </div>
+      </div>
+
+      <!-- 步骤 2: 账号密码配置 -->
+      <div class="form-section" id="section-2" style="display: none;">
+        <h3>🔐 管理员账号配置</h3>
+
+        <div class="form-group">
+          <label>
+            管理员用户名
+            <span class="required">*</span>
+          </label>
+          <input
+            type="text"
+            id="username"
+            value="admin"
+            placeholder="例如：admin"
+            required
+          >
+          <div class="hint">用于登录管理后台的用户名</div>
+          <div class="error">请输入用户名</div>
+        </div>
+
+        <div class="form-group">
+          <label>
+            管理员密码
+            <span class="required">*</span>
+          </label>
+          <input
+            type="password"
+            id="password"
+            placeholder="请输入密码（至少 6 位）"
+            required
+          >
+          <div class="hint">用于登录管理后台的密码</div>
+          <div class="error">密码至少 6 位</div>
+        </div>
+
+        <div class="form-group">
+          <label>
+            确认密码
+            <span class="required">*</span>
+          </label>
+          <input
+            type="password"
+            id="password-confirm"
+            placeholder="请再次输入密码"
+            required
+          >
+          <div class="hint">请再次输入密码以确认</div>
+          <div class="error">两次输入的密码不一致</div>
+        </div>
+      </div>
+
+      <!-- 步骤 3: 激活码配置 -->
+      <div class="form-section" id="section-3" style="display: none;">
+        <h3>🔑 激活码配置</h3>
+
+        <div class="form-group">
+          <label>
+            激活码
+            <span class="required">*</span>
+          </label>
+          <input
+            type="text"
+            id="activation-code"
+            placeholder="例如：MTV-XXXX-XXXX-XXXX"
+            required
+          >
+          <div class="hint">格式：MTV-XXXX-XXXX-XXXX</div>
+          <div class="error">请输入有效的激活码</div>
+        </div>
+
+        <div class="info-box">
+          💡 如果没有激活码，可以稍后在应用内激活<br>
+          管理后台：https://9ay.kdns.fr
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button type="button" class="btn btn-secondary" id="btn-prev" style="display: none;">
+          上一步
+        </button>
+        <button type="button" class="btn btn-primary" id="btn-next">
+          下一步
+        </button>
+        <button type="submit" class="btn btn-primary" id="btn-submit" style="display: none;">
+          完成安装
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    let currentStep = 1;
+    const totalSteps = 3;
+
+    const form = document.getElementById('config-form');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    const btnSubmit = document.getElementById('btn-submit');
+    const successMessage = document.getElementById('success-message');
+    const successText = document.getElementById('success-text');
+
+    // 步骤切换
+    function showStep(step) {
+      // 隐藏所有步骤
+      for (let i = 1; i <= totalSteps; i++) {
+        document.getElementById(`section-${i}`).style.display = 'none';
+        document.getElementById(`step-${i}`).classList.remove('active');
+      }
+
+      // 显示当前步骤
+      document.getElementById(`section-${step}`).style.display = 'block';
+      document.getElementById(`step-${step}`).classList.add('active');
+
+      // 更新已完成步骤
+      for (let i = 1; i < step; i++) {
+        document.getElementById(`step-${i}`).classList.add('completed');
+      }
+
+      // 更新按钮
+      btnPrev.style.display = step > 1 ? 'block' : 'none';
+      btnNext.style.display = step < totalSteps ? 'block' : 'none';
+      btnSubmit.style.display = step === totalSteps ? 'block' : 'none';
+
+      currentStep = step;
+    }
+
+    // 验证当前步骤
+    function validateStep(step) {
+      let valid = true;
+
+      if (step === 1) {
+        const port = document.getElementById('port');
+        const portValue = parseInt(port.value);
+
+        if (!portValue || portValue < 1024 || portValue > 65535) {
+          port.classList.add('invalid');
+          valid = false;
+        } else {
+          port.classList.remove('invalid');
+        }
+      }
+
+      if (step === 2) {
+        const username = document.getElementById('username');
+        const password = document.getElementById('password');
+        const passwordConfirm = document.getElementById('password-confirm');
+
+        if (!username.value.trim()) {
+          username.classList.add('invalid');
+          valid = false;
+        } else {
+          username.classList.remove('invalid');
+        }
+
+        if (!password.value || password.value.length < 6) {
+          password.classList.add('invalid');
+          valid = false;
+        } else {
+          password.classList.remove('invalid');
+        }
+
+        if (password.value !== passwordConfirm.value) {
+          passwordConfirm.classList.add('invalid');
+          valid = false;
+        } else {
+          passwordConfirm.classList.remove('invalid');
+        }
+      }
+
+      if (step === 3) {
+        const code = document.getElementById('activation-code');
+        const codePattern = /^MTV-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+
+        if (!code.value.trim() || !codePattern.test(code.value.trim())) {
+          code.classList.add('invalid');
+          valid = false;
+        } else {
+          code.classList.remove('invalid');
+        }
+      }
+
+      return valid;
+    }
+
+    // 保存配置
+    async function saveConfig() {
+      const config = {
+        port: parseInt(document.getElementById('port').value),
+        username: document.getElementById('username').value.trim(),
+        password: document.getElementById('password').value,
+        activationCode: document.getElementById('activation-code').value.trim(),
+        activatedAt: new Date().toISOString()
+      };
+
+      try {
+        // 保存配置到本地
+        const response = await fetch('/api/install/config', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(config)
+        });
+
+        if (response.ok) {
+          showSuccess(config);
+        } else {
+          alert('保存配置失败，请重试');
+        }
+      } catch (error) {
+        console.error('保存配置失败:', error);
+        // 即使 API 失败也显示成功（本地模式）
+        showSuccess(config);
+      }
+    }
+
+    function showSuccess(config) {
+      form.style.display = 'none';
+      document.querySelector('.step-indicator').style.display = 'none';
+      document.querySelector('.info-box').style.display = 'none';
+
+      successText.innerHTML = `
+        端口：<strong>${config.port}</strong><br>
+        用户名：<strong>${config.username}</strong><br>
+        激活码：<strong>${config.activationCode || '未设置'}</strong><br><br>
+        应用正在启动，请稍候...
+      `;
+      successMessage.classList.add('show');
+
+      // 3 秒后跳转到应用
+      setTimeout(() => {
+        window.location.href = `http://localhost:${config.port}`;
+      }, 3000);
+    }
+
+    // 事件监听
+    btnNext.addEventListener('click', () => {
+      if (validateStep(currentStep)) {
+        showStep(currentStep + 1);
+      }
+    });
+
+    btnPrev.addEventListener('click', () => {
+      showStep(currentStep - 1);
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      if (validateStep(currentStep)) {
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = '保存中...';
+
+        await saveConfig();
+      }
+    });
+
+    // 实时验证
+    document.getElementById('port').addEventListener('input', function() {
+      this.classList.remove('invalid');
+    });
+
+    document.getElementById('username').addEventListener('input', function() {
+      this.classList.remove('invalid');
+    });
+
+    document.getElementById('password').addEventListener('input', function() {
+      this.classList.remove('invalid');
+      document.getElementById('password-confirm').classList.remove('invalid');
+    });
+
+    document.getElementById('password-confirm').addEventListener('input', function() {
+      this.classList.remove('invalid');
+    });
+
+    document.getElementById('activation-code').addEventListener('input', function() {
+      this.classList.remove('invalid');
+    });
+
+    // 初始化
+    showStep(1);
+  </script>
+</body>
+</html>
