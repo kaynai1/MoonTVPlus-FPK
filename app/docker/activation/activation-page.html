@@ -282,10 +282,6 @@
         <li>联系管理员获取激活码</li>
         <li>激活码格式：<code>MTV-XXXX-XXXX-XXXX</code></li>
         <li>每个激活码只能绑定一台设备</li>
-        <li>
-          管理后台：
-          <a href="https://9ay.kdns.fr" target="_blank">9ay.kdns.fr</a>
-        </li>
       </ul>
     </div>
   </div>
@@ -330,6 +326,22 @@
       messageDiv.style.display = 'none';
     }
 
+    // 激活成功后容器会重启，请求可能因连接中断而失败，用轮询判断应用是否就绪
+    async function waitForApp(timeoutMs) {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const res = await fetch('/api/status', { cache: 'no-store' });
+          if (res.status === 404) return true;
+          if (!res.headers.get('x-moontv-gate')) return true;
+        } catch (err) {
+          // 容器正在重启，继续等待
+        }
+      }
+      return false;
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -345,6 +357,7 @@
       submitBtn.innerHTML = '<span class="loading"></span>验证中...';
       hideMessage();
 
+      let data = null;
       try {
         const response = await fetch('/api/activate', {
           method: 'POST',
@@ -353,25 +366,27 @@
           },
           body: JSON.stringify({ code }),
         });
-
-        const data = await response.json();
-
-        if (data.success) {
-          showMessage(data.message, 'success');
-
-          // Update status after a short delay
-          setTimeout(() => {
-            showActivated({
-              code: code,
-              activatedAt: new Date().toISOString(),
-            });
-          }, 1500);
-        } else {
-          showMessage(data.message || '激活失败，请检查激活码', 'error');
-        }
+        data = await response.json();
       } catch (err) {
-        showMessage('网络错误，请稍后重试', 'error');
-      } finally {
+        data = null;
+      }
+
+      if (data && !data.success) {
+        showMessage(data.message || '激活失败，请检查激活码', 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '验证并激活';
+        return;
+      }
+
+      if (data) {
+        showMessage(data.message, 'success');
+      }
+
+      submitBtn.innerHTML = '<span class="loading"></span>正在启动应用...';
+      if (await waitForApp(60000)) {
+        window.location.replace('/');
+      } else {
+        showMessage('无法连接应用，请稍后刷新页面重试', 'error');
         submitBtn.disabled = false;
         submitBtn.innerHTML = '验证并激活';
       }

@@ -21,6 +21,8 @@ const ACTIVATION_API_URL = process.env.ACTIVATION_API_URL || 'https://9ay.kdns.f
 const APP_PORT = Number(process.env.PORT) || 3000;
 const EXTERNAL_PORT = Number(process.env.APP_PORT) || APP_PORT;
 
+let STARTUP_ERROR = null;
+
 function readJson(file) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -30,8 +32,12 @@ function readJson(file) {
 }
 
 function writeJson(file, data) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err) {
+    throw new Error(`数据目录不可写（${path.dirname(file)}：${err.code || err.message}），请检查应用数据目录权限`);
+  }
 }
 
 function loadConfig() {
@@ -70,7 +76,12 @@ async function postJson(pathname, payload) {
 }
 
 async function activateCode(code) {
-  const device = getDeviceId();
+  let device;
+  try {
+    device = getDeviceId();
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
   const deviceName = process.env.APP_DEVICE_NAME || os.hostname();
 
   try {
@@ -129,25 +140,50 @@ function readBody(req) {
 }
 
 function sendJson(res, status, payload) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'X-Moontv-Gate': '1',
+  });
   res.end(JSON.stringify(payload));
 }
 
 function sendPage(res, file) {
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'X-Moontv-Gate': '1',
+  });
   res.end(fs.readFileSync(file, 'utf8'));
 }
 
-function restartSoon(reason) {
-  setTimeout(() => {
-    console.log(`[Gate] ${reason}，重启容器...`);
-    process.exit(0);
-  }, 1500);
+// 先把响应真正写回客户端，再退出容器，避免浏览器把「已成功的请求」看成连接失败
+function finishThenRestart(res, payload, reason) {
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'X-Moontv-Gate': '1',
+  });
+  res.end(JSON.stringify(payload), () => {
+    setTimeout(() => {
+      console.log(`[Gate] ${reason}，重启容器...`);
+      process.exit(0);
+    }, 800);
+  });
 }
 
-function startGate() {
-  const server = http.createServer(async (req, res) => {
+function peekDeviceId() {
+  try {
+    return getDeviceId();
+  } catch {
+    return null;
+  }
+}
+
+async function handle(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+    if (STARTUP_ERROR && req.method === 'POST') {
+      sendJson(res, 400, { success: false, message: STARTUP_ERROR });
+      return;
+    }
 
     if (req.method === 'GET' && ['/', '/install', '/activate'].includes(url.pathname)) {
       sendPage(res, loadConfig() ? ACTIVATION_PAGE : INSTALL_WIZARD);
@@ -163,7 +199,8 @@ function startGate() {
         port: EXTERNAL_PORT,
         code: activation?.code || null,
         activatedAt: activation?.activatedAt || null,
-        deviceId: getDeviceId(),
+        deviceId: peekDeviceId(),
+        error: STARTUP_ERROR,
       });
       return;
     }
@@ -204,8 +241,7 @@ function startGate() {
       });
 
       console.log('[Gate] 配置完成，激活码:', result.code);
-      sendJson(res, 200, { success: true, message: '配置完成，正在启动应用...' });
-      restartSoon('初始化完成');
+      finishThenRestart(res, { success: true, message: '配置完成，正在启动应用...' }, '初始化完成');
       return;
     }
 
@@ -234,12 +270,21 @@ function startGate() {
       });
 
       console.log('[Gate] 激活成功:', result.code);
-      sendJson(res, 200, { success: true, message: '激活成功，正在启动应用...' });
-      restartSoon('激活成功');
+      finishThenRestart(res, { success: true, message: '激活成功，正在启动应用...' }, '激活成功');
       return;
     }
 
     sendJson(res, 404, { ok: false, message: 'Not Found' });
+}
+
+function startGate() {
+  const server = http.createServer(async (req, res) => {
+    try {
+      await handle(req, res);
+    } catch (err) {
+      console.error('[Gate] 请求处理失败:', err.message);
+      if (!res.headersSent) sendJson(res, 500, { success: false, message: err.message });
+    }
   });
 
   server.listen(APP_PORT, '0.0.0.0', () => {
@@ -262,7 +307,15 @@ function startApp(config) {
 }
 
 async function main() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.accessSync(DATA_DIR, fs.constants.W_OK);
+  } catch (err) {
+    STARTUP_ERROR = `数据目录不可用（${DATA_DIR}：${err.code || err.message}），请卸载后重新安装应用`;
+    console.error('[Gate] ' + STARTUP_ERROR);
+    startGate();
+    return;
+  }
 
   const config = loadConfig();
   if (!config) {

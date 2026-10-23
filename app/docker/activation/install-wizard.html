@@ -100,6 +100,8 @@
       如需修改端口，请到「飞牛应用中心 → MoonTVPlus → 设置」调整。
     </div>
 
+    <div class="info-box" id="startup-error" style="display: none; background: #fef2f2; border-left-color: #ef4444; color: #991b1b;"></div>
+
     <div class="success" id="success">
       <div class="big">✅</div>
       <h4>初始化完成</h4>
@@ -137,12 +139,8 @@
         <div class="form-group">
           <label>激活码 <span class="required">*</span></label>
           <input type="text" id="activation-code" placeholder="MTV-XXXX-XXXX-XXXX" autocomplete="off" required>
-          <div class="hint">格式：MTV-XXXX-XXXX-XXXX，一个激活码绑定一台设备</div>
+          <div class="hint">格式：MTV-XXXX-XXXX-XXXX，一个激活码绑定一台设备；激活码由管理员发放</div>
           <div class="error">请输入正确的激活码格式</div>
-        </div>
-
-        <div class="info-box">
-          激活码由管理员发放，管理后台：<a href="https://9ay.kdns.fr" target="_blank" rel="noopener">9ay.kdns.fr</a>
         </div>
       </div>
 
@@ -197,6 +195,31 @@
       return valid;
     }
 
+    function showSuccess() {
+      document.getElementById('steps').style.display = 'none';
+      document.getElementById('port-info').style.display = 'none';
+      document.getElementById('startup-error').style.display = 'none';
+      form.style.display = 'none';
+      document.getElementById('success').classList.add('show');
+      setTimeout(() => window.location.replace('/'), 12000);
+    }
+
+    // 提交后容器会重启，请求可能因连接中断而抛错；用轮询判断应用是否已就绪
+    async function waitForApp(timeoutMs) {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const res = await fetch('/api/status', { cache: 'no-store' });
+          if (res.status === 404) return true;
+          if (!res.headers.get('x-moontv-gate')) return true;
+        } catch {
+          // 容器正在重启，继续等待
+        }
+      }
+      return false;
+    }
+
     async function submitConfig() {
       const payload = {
         username: document.getElementById('username').value.trim(),
@@ -207,30 +230,44 @@
       btnSubmit.disabled = true;
       btnSubmit.textContent = '正在校验激活码...';
 
+      let data = null;
       try {
         const res = await fetch('/api/install/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const data = await res.json();
-
-        if (!data.success) {
-          btnSubmit.disabled = false;
-          btnSubmit.textContent = '完成初始化';
-          alert(data.message || '初始化失败，请重试');
-          return;
-        }
-
-        document.getElementById('steps').style.display = 'none';
-        document.getElementById('port-info').style.display = 'none';
-        form.style.display = 'none';
-        document.getElementById('success').classList.add('show');
-        setTimeout(() => window.location.reload(), 12000);
+        data = await res.json();
       } catch (err) {
+        data = null;
+      }
+
+      if (data && data.success) {
+        showSuccess();
+        return;
+      }
+
+      if (data && !data.message) {
         btnSubmit.disabled = false;
         btnSubmit.textContent = '完成初始化';
-        alert('无法连接应用，请稍后重试');
+        alert('初始化失败，请重试');
+        return;
+      }
+
+      if (data) {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = '完成初始化';
+        alert(data.message);
+        return;
+      }
+
+      btnSubmit.textContent = '正在启动应用...';
+      if (await waitForApp(60000)) {
+        showSuccess();
+      } else {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = '完成初始化';
+        alert('无法连接应用，请稍后刷新页面重试');
       }
     }
 
@@ -248,6 +285,11 @@
 
     fetch('/api/status').then(r => r.json()).then(d => {
       if (d.port) document.getElementById('port-value').textContent = d.port;
+      if (d.error) {
+        const el = document.getElementById('startup-error');
+        el.textContent = d.error;
+        el.style.display = 'block';
+      }
     }).catch(() => {});
 
     showStep(1);

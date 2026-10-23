@@ -40,11 +40,23 @@ ensure_image() {
     return 1
 }
 
+# 让容器内的运行 UID/GID 与宿主机数据目录属主一致，否则激活层写 config.json 会失败
+prepare_data_dirs() {
+    mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/downloads" 2>/dev/null || true
+    MOUNT_UID="$(stat -c '%u' "${TRIM_PKGVAR}/data" 2>/dev/null || echo 1001)"
+    MOUNT_GID="$(stat -c '%g' "${TRIM_PKGVAR}/data" 2>/dev/null || echo 1001)"
+    chmod -R u+rwX,go+rwX "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/downloads" 2>/dev/null || true
+    export MOUNT_UID MOUNT_GID
+    install_log "数据目录 ${TRIM_PKGVAR}/data uid=${MOUNT_UID} gid=${MOUNT_GID}"
+}
+
 compose_up() {
     local port="${wizard_port:-${TRIM_SERVICE_PORT:-3000}}"
     cd "${COMPOSE_DIR}" || error_exit "找不到应用目录 ${COMPOSE_DIR}"
+    prepare_data_dirs
     install_log "启动容器，端口 ${port}"
-    TRIM_SERVICE_PORT="${port}" docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans 2>&1 | install_log
+    TRIM_SERVICE_PORT="${port}" MOUNT_UID="${MOUNT_UID}" MOUNT_GID="${MOUNT_GID}" \
+        docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans 2>&1 | install_log
 }
 
 compose_down() {
@@ -70,14 +82,14 @@ wait_running() {
 }
 
 service_postinst() {
-    mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/downloads"
+    prepare_data_dirs
     ensure_image || error_exit "无法获取 MoonTVPlus 镜像，请检查网络后重试安装"
     compose_up
     wait_running
 }
 
 service_postupgrade() {
-    mkdir -p "${TRIM_PKGVAR}/data" "${TRIM_PKGVAR}/downloads"
+    prepare_data_dirs
     ensure_image
     compose_up
     wait_running
