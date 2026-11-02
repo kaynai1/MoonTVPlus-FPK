@@ -9,8 +9,9 @@ CONTAINER_NAME="moontvplus"
 IMAGE="ghcr.io/mtvpls/moontvplus:latest"
 IMAGE_TAR="${COMPOSE_DIR}/moontvplus-image.tar"
 IMAGE_TAR_GZ="${COMPOSE_DIR}/moontvplus-image.tar.gz"
-# 国内镜像源在前，ghcr.io 兜底（ghcr.nju.edu.cn 可直连 GHCR，无需登录）
-IMAGE_MIRRORS="ghcr.nju.edu.cn ghcr.m.daocloud.io ghcr.io"
+ALIYUN_IMAGE="crpi-fm31aqsu2j8mj9dr.cn-hangzhou.personal.cr.aliyuncs.com/moontvplus/mootvplus:latest"
+# 阿里云公开仓库优先，随后是现有国内镜像源，ghcr.io 兜底
+IMAGE_CANDIDATES="${ALIYUN_IMAGE} ghcr.nju.edu.cn/mtvpls/moontvplus:latest ghcr.m.daocloud.io/mtvpls/moontvplus:latest ${IMAGE}"
 
 image_present() {
     docker image inspect "${IMAGE}" >/dev/null 2>&1
@@ -94,13 +95,8 @@ ensure_image() {
         return 0
     fi
 
-    local host ref
-    for host in ${IMAGE_MIRRORS}; do
-        if [ "${host}" = "ghcr.io" ]; then
-            ref="${IMAGE}"
-        else
-            ref="${host}/mtvpls/moontvplus:latest"
-        fi
+    local ref
+    for ref in ${IMAGE_CANDIDATES}; do
         install_log "拉取镜像 ${ref}"
         if run_with_timeout "${per_host_timeout}" docker pull "${ref}" >> "${LOG_FILE}" 2>&1; then
             if tag_as_image "${ref}" && image_present; then
@@ -108,7 +104,7 @@ ensure_image() {
                 return 0
             fi
         fi
-        install_log "镜像源 ${host} 不可用，尝试下一个"
+        install_log "镜像源 ${ref} 不可用，尝试下一个"
     done
 
     if image_present; then

@@ -12,7 +12,9 @@
 | `moontvplus_<版本>_offline.fpk` | 离线版（约 300 MB），镜像已内嵌，安装过程不联网 |
 
 镜像不自己构建：直接用官方的 `ghcr.io/mtvpls/moontvplus:latest`，激活层以只读挂载方式叠加，上游镜像完全不动。
-拉取顺序为 `ghcr.nju.edu.cn` → `ghcr.m.daocloud.io` → `ghcr.io`，前两个是国内镜像源。
+在线版优先从阿里云公开镜像仓库
+`crpi-fm31aqsu2j8mj9dr.cn-hangzhou.personal.cr.aliyuncs.com/moontvplus/mootvplus:latest`
+拉取，失败后依次尝试 `ghcr.nju.edu.cn`、`ghcr.m.daocloud.io`，最后回退 `ghcr.io`。
 
 存储走官方的 SQLite 模式（`NEXT_PUBLIC_STORAGE_TYPE=d1` + `SQLITE_DB_PATH=/app/.data/moontv.db`），单容器、无 sidecar，
 播放记录/收藏/用户/站点配置都落在挂载出来的 `data` 目录里，管理后台功能与原版一致。
