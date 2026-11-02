@@ -37,13 +37,17 @@ cp ui/images/*.png "$STAGE/app/ui/images/"
 
 if [ "$VARIANT" = "offline" ]; then
     IMAGE_TAR="${IMAGE_TAR:-$ROOT/moontvplus-image.tar}"
-    if [ ! -f "$IMAGE_TAR" ]; then
+    if [ ! -s "$IMAGE_TAR" ]; then
         echo "ERROR: 离线版缺少镜像文件 $IMAGE_TAR" >&2
         exit 1
     fi
-    cp "$IMAGE_TAR" "$STAGE/app/docker/moontvplus-image.tar"
-    sed -i 's#^    restart: unless-stopped#    restart: unless-stopped\n    pull_policy: never#' \
-        "$STAGE/app/docker/docker-compose.yaml"
+    # 镜像压缩后再打包：解包后只占约 300MB，避免小容量系统盘被 1GB+ tar 撑爆
+    case "$IMAGE_TAR" in
+        *.gz) cp "$IMAGE_TAR" "$STAGE/app/docker/moontvplus-image.tar.gz" ;;
+        *)    gzip -c "$IMAGE_TAR" > "$STAGE/app/docker/moontvplus-image.tar.gz" ;;
+    esac
+    # 不再写 pull_policy: never —— 内嵌镜像 load 失败时允许 compose 回退在线拉取，
+    # 否则只会报 "No such image"，用户完全不知道发生了什么
 fi
 
 # ---- app.tgz ----

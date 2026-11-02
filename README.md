@@ -26,7 +26,7 @@
    - 输入激活码 `MTV-XXXX-XXXX-XXXX`
 4. 约 10 秒后应用就绪
 
-端口后续可在「应用中心 → MoonTVPlus → 设置」中修改。
+端口后续可在「应用中心 → MoonTVPlus → 设置」中修改；安装和设置保存后都会记住所选端口，应用自动重启时不会退回 3000。
 
 从 1.1.x 升级需先卸载旧版（数据目录保留）再全新安装：1.1.x 的 compose 仍指向已下线的自建镜像，直接覆盖安装会失败。
 
@@ -53,7 +53,8 @@ manifest              fnOS 应用清单（platform=x86, checksum=md5(app.tgz)）
 MoonTVPlus.sc         端口转发配置
 config/               privilege（运行用户）、resource（数据共享/端口/docker 项目）
 ui/                   桌面入口与图标
-wizard/config         安装向导字段（端口）
+wizard/install        安装时选择访问端口
+wizard/config         安装后设置中修改访问端口
 cmd/                  生命周期脚本
   common              通用框架（官方模板）
   installer           入口脚本共用的初始化

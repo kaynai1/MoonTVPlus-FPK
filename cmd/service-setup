@@ -1,44 +1,117 @@
 #!/bin/bash
 
+set -o pipefail
+
 COMPOSE_DIR="${TRIM_APPDEST}/docker"
 COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yaml"
+COMPOSE_PROJECT="moontvplus"
 CONTAINER_NAME="moontvplus"
 IMAGE="ghcr.io/mtvpls/moontvplus:latest"
 IMAGE_TAR="${COMPOSE_DIR}/moontvplus-image.tar"
-IMAGE_MIRRORS="ghcr.nju.edu.cn ghcr.m.daocloud.io"
+IMAGE_TAR_GZ="${COMPOSE_DIR}/moontvplus-image.tar.gz"
+# 国内镜像源在前，ghcr.io 兜底（ghcr.nju.edu.cn 可直连 GHCR，无需登录）
+IMAGE_MIRRORS="ghcr.nju.edu.cn ghcr.m.daocloud.io ghcr.io"
 
-# 优先用内嵌镜像，其次按镜像源顺序拉取（国内镜像源在前，ghcr.io 兜底）
+image_present() {
+    docker image inspect "${IMAGE}" >/dev/null 2>&1
+}
+
+# 把失败原因写进安装弹窗，而不是只留一句“请看日志”
+install_fail() {
+    local msg="$1"
+    if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+        {
+            echo "${msg}"
+            if [ -s "${LOG_FILE}" ]; then
+                echo "---- 最近日志 ----"
+                tail -n 12 "${LOG_FILE}"
+            fi
+        } > "${TRIM_TEMP_LOGFILE}" 2>/dev/null || true
+    fi
+    echo "ERROR: ${msg}" >&2
+}
+
+run_with_timeout() {
+    local secs="$1"
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "${secs}" "$@"
+    else
+        "$@"
+    fi
+}
+
+# 内嵌镜像的标签/格式可能和官方标签不一致，统一打回 ${IMAGE}
+tag_as_image() {
+    local ref="$1"
+    [ -n "${ref}" ] || return 1
+    [ "${ref}" = "${IMAGE}" ] && return 0
+    docker tag "${ref}" "${IMAGE}" >> "${LOG_FILE}" 2>&1
+}
+
+# 离线包内嵌镜像：load 失败必须能被发现，否则 compose 只会报 No such image
+load_embedded_image() {
+    local src=""
+    if [ -f "${IMAGE_TAR_GZ}" ]; then
+        src="${IMAGE_TAR_GZ}"
+    elif [ -f "${IMAGE_TAR}" ]; then
+        src="${IMAGE_TAR}"
+    fi
+    [ -n "${src}" ] || return 1
+    install_log "加载内嵌镜像 ${src}"
+    local out rc ref
+    out="$(docker load -i "${src}" 2>&1)"
+    rc=$?
+    printf '%s\n' "${out}" >> "${LOG_FILE}"
+    printf '%s\n' "${out}" | install_log
+    if [ "${rc}" -ne 0 ]; then
+        install_log "docker load 失败 (rc=${rc})，改为在线拉取"
+        return 1
+    fi
+    if image_present; then
+        install_log "内嵌镜像已就绪"
+        return 0
+    fi
+    for ref in $(printf '%s\n' "${out}" | sed -n 's/^Loaded image: //p'); do
+        if tag_as_image "${ref}" && image_present; then
+            install_log "内嵌镜像已重新标记为 ${IMAGE}（来源 ${ref}）"
+            return 0
+        fi
+    done
+    install_log "内嵌镜像已加载但缺少 ${IMAGE} 标签，改为在线拉取"
+    return 1
+}
+
+# 优先用内嵌镜像，其次按镜像源顺序拉取
 # force：官方 latest 每次发布都会变，安装/升级时都要刷新，不能因为本地有旧镜像就跳过
 ensure_image() {
     local per_host_timeout="${2:-300}"
-    if [ -f "${IMAGE_TAR}" ]; then
-        install_log "加载内嵌镜像 ${IMAGE_TAR}"
-        docker load -i "${IMAGE_TAR}" 2>&1 | install_log
+    if load_embedded_image; then
         return 0
     fi
-    if [ "$1" != "force" ] && docker image inspect "${IMAGE}" >/dev/null 2>&1; then
+    if [ "$1" != "force" ] && image_present; then
         install_log "镜像已存在，跳过拉取"
         return 0
     fi
 
-    for host in ${IMAGE_MIRRORS} ""; do
-        if [ -n "${host}" ]; then
-            ref="${host}/mtvpls/moontvplus:latest"
-        else
+    local host ref
+    for host in ${IMAGE_MIRRORS}; do
+        if [ "${host}" = "ghcr.io" ]; then
             ref="${IMAGE}"
+        else
+            ref="${host}/mtvpls/moontvplus:latest"
         fi
         install_log "拉取镜像 ${ref}"
-        if timeout "${per_host_timeout}" docker pull "${ref}" >> "${LOG_FILE}" 2>&1; then
-            if docker image inspect "${ref}" >/dev/null 2>&1; then
-                [ "${ref}" != "${IMAGE}" ] && docker tag "${ref}" "${IMAGE}"
+        if run_with_timeout "${per_host_timeout}" docker pull "${ref}" >> "${LOG_FILE}" 2>&1; then
+            if tag_as_image "${ref}" && image_present; then
                 install_log "镜像就绪 ${ref}"
                 return 0
             fi
         fi
-        install_log "镜像源 ${host:-ghcr.io} 不可用，尝试下一个"
+        install_log "镜像源 ${host} 不可用，尝试下一个"
     done
 
-    if docker image inspect "${IMAGE}" >/dev/null 2>&1; then
+    if image_present; then
         install_log "所有镜像源均拉取失败，沿用本地已有镜像"
         return 0
     fi
@@ -59,47 +132,110 @@ prepare_data_dirs() {
 
 compose_up() {
     local port="${wizard_port:-${TRIM_SERVICE_PORT:-3000}}"
-    cd "${COMPOSE_DIR}" || error_exit "找不到应用目录 ${COMPOSE_DIR}"
+    case "${port}" in
+        ''|*[!0-9]*)
+            install_fail "访问端口 ${port:-空} 无效：必须是数字"
+            return 1
+            ;;
+    esac
+    if [ "${port}" -lt 1024 ] || [ "${port}" -gt 65535 ]; then
+        install_fail "访问端口 ${port} 无效：必须在 1024-65535 之间"
+        return 1
+    fi
+    if [ ! -d "${COMPOSE_DIR}" ]; then
+        install_log "找不到应用目录 ${COMPOSE_DIR}"
+        return 1
+    fi
     prepare_data_dirs
     install_log "启动容器，端口 ${port}"
-    TRIM_SERVICE_PORT="${port}" MOUNT_UID="${MOUNT_UID}" MOUNT_GID="${MOUNT_GID}" \
-        docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans 2>&1 | install_log
+    cleanup_stale
+    (
+        cd "${COMPOSE_DIR}" || exit 1
+        TRIM_SERVICE_PORT="${port}" MOUNT_UID="${MOUNT_UID}" MOUNT_GID="${MOUNT_GID}" \
+            docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" up -d --remove-orphans
+    ) 2>&1 | tee -a "${LOG_FILE}" | install_log
 }
 
 compose_down() {
     if [ -f "${COMPOSE_FILE}" ]; then
-        cd "${COMPOSE_DIR}" || return 0
-        docker compose -f "${COMPOSE_FILE}" down --remove-orphans 2>&1 | install_log
+        (
+            cd "${COMPOSE_DIR}" || exit 0
+            docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" down --remove-orphans
+        ) 2>&1 | tee -a "${LOG_FILE}" | install_log
+    fi
+}
+
+# 上一轮安装/升级可能留下同名容器或网络，compose 会直接拒绝创建
+cleanup_stale() {
+    local proj net nproj
+    if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+        proj="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "${CONTAINER_NAME}" 2>/dev/null || true)"
+        if [ "${proj}" != "${COMPOSE_PROJECT}" ]; then
+            install_log "清理残留容器 ${CONTAINER_NAME}（原项目 ${proj:-无}）"
+            docker rm -f "${CONTAINER_NAME}" >> "${LOG_FILE}" 2>&1 || true
+        fi
+    fi
+    net="${COMPOSE_PROJECT}_default"
+    if docker network inspect "${net}" >/dev/null 2>&1; then
+        nproj="$(docker network inspect -f '{{ index .Labels "com.docker.compose.project" }}' "${net}" 2>/dev/null || true)"
+        if [ "${nproj}" != "${COMPOSE_PROJECT}" ]; then
+            install_log "清理残留网络 ${net}（原项目 ${nproj:-无}）"
+            docker network rm "${net}" >> "${LOG_FILE}" 2>&1 || true
+        fi
     fi
 }
 
 wait_running() {
-    local i=0
+    local i=0 restarts
     while [ "${i}" -lt 60 ]; do
         if [ "$(docker inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = "true" ]; then
-            install_log "容器 ${CONTAINER_NAME} 已运行"
-            install_log "运行镜像：$(docker inspect -f '{{.Config.Image}} / 构建于 {{.Created}}' "${CONTAINER_NAME}" 2>/dev/null)"
-            return 0
+            # 防止“启动一秒后崩溃重启”被误判为安装成功
+            sleep 6
+            restarts="$(docker inspect -f '{{.RestartCount}}' "${CONTAINER_NAME}" 2>/dev/null || echo 0)"
+            if [ "$(docker inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = "true" ] && [ "${restarts:-0}" = "0" ]; then
+                install_log "容器 ${CONTAINER_NAME} 已稳定运行"
+                install_log "运行镜像：$(docker inspect -f '{{.Config.Image}} / 构建于 {{.Created}}' "${CONTAINER_NAME}" 2>/dev/null)"
+                return 0
+            fi
+            install_log "容器启动后随即退出（重启次数 ${restarts:-未知}），输出最近日志："
+            docker logs --tail 60 "${CONTAINER_NAME}" 2>&1 | tee -a "${LOG_FILE}" | install_log
+            return 1
         fi
         i=$((i + 1))
         sleep 2
     done
     install_log "容器启动超时，输出最近日志："
-    docker logs --tail 60 "${CONTAINER_NAME}" 2>&1 | install_log
+    docker logs --tail 60 "${CONTAINER_NAME}" 2>&1 | tee -a "${LOG_FILE}" | install_log
+    docker ps -a --filter "name=${CONTAINER_NAME}" 2>&1 | tee -a "${LOG_FILE}" | install_log
     return 1
 }
 
 service_postinst() {
     prepare_data_dirs
-    ensure_image force || error_exit "无法获取 MoonTVPlus 镜像，请检查网络后重试安装"
-    compose_up
-    wait_running
+    ensure_image force || {
+        install_fail "无法获取 MoonTVPlus 镜像：内嵌镜像不可用，且所有镜像源拉取失败"
+        return 1
+    }
+    compose_up || {
+        install_fail "docker compose 启动失败（多为端口被占用或残留容器冲突）"
+        return 1
+    }
+    wait_running || {
+        install_fail "容器已创建但未能正常运行，请查看下方容器日志"
+        return 1
+    }
 }
 
 service_postupgrade() {
     prepare_data_dirs
-    ensure_image force
-    compose_up
+    ensure_image force || {
+        install_fail "升级时无法获取 MoonTVPlus 镜像"
+        return 1
+    }
+    compose_up || {
+        install_fail "升级时 docker compose 启动失败"
+        return 1
+    }
     wait_running
 }
 
@@ -110,7 +246,13 @@ service_preuninst() {
 # 在应用中心「设置」里点保存即可刷新到官方最新版：镜像没变时 docker pull 只校验 manifest，几秒返回
 service_postconfig() {
     prepare_data_dirs
-    ensure_image force 60
-    compose_up
+    ensure_image force 60 || {
+        install_fail "保存设置时无法拉取 MoonTVPlus 镜像"
+        return 1
+    }
+    compose_up || {
+        install_fail "保存设置时 docker compose 启动失败"
+        return 1
+    }
     wait_running
 }

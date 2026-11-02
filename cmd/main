@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 COMPOSE_DIR="${TRIM_APPDEST}/docker"
 CONTAINER_NAME="moontvplus"
 
@@ -7,10 +9,37 @@ is_running() {
     [ "$(docker inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null)" = "true" ]
 }
 
+read_service_port() {
+    local port="${wizard_port:-}"
+    local variables_file=""
+
+    if [ -n "${TRIM_APPNAME:-}" ]; then
+        variables_file="/var/apps/${TRIM_APPNAME}/etc/installer-variables"
+    fi
+    if [ -z "${port}" ] && [ -n "${variables_file}" ] && [ -r "${variables_file}" ]; then
+        port="$(sed -n 's/^wizard_port=//p' "${variables_file}" | tail -n 1)"
+    fi
+    if [ -z "${port}" ]; then
+        port="${TRIM_SERVICE_PORT:-3000}"
+    fi
+
+    case "${port}" in
+        ''|*[!0-9]*) port=3000 ;;
+    esac
+    if [ "${port}" -lt 1024 ] || [ "${port}" -gt 65535 ]; then
+        port=3000
+    fi
+    printf '%s' "${port}"
+}
+
 case $1 in
 start)
-    if ! docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1 && [ -n "${TRIM_PKGVAR:-}" ]; then
-        cd "${COMPOSE_DIR}" && docker compose -f docker-compose.yaml up -d
+    if [ -n "${TRIM_PKGVAR:-}" ]; then
+        TRIM_SERVICE_PORT="$(read_service_port)"
+        export TRIM_SERVICE_PORT
+        # 无论容器是否存在都交给 compose 对齐状态：停止、崩溃或缺失时都能重新拉起
+        cd "${COMPOSE_DIR}" || exit 1
+        docker compose -p moontvplus -f docker-compose.yaml up -d --pull missing || exit 1
     fi
     exit 0
     ;;

@@ -13,13 +13,5 @@
                 }
             }
         ]
-    },
-    "docker-project": {
-        "projects": [
-            {
-                "name": "moontvplus",
-                "path": "docker"
-            }
-        ]
     }
 }

@@ -3,5 +3,8 @@
         "run-as": "package"
     },
     "username": "moontvplus",
-    "groupname": "moontvplus"
+    "groupname": "moontvplus",
+    "join-groups": [
+        "docker"
+    ]
 }
